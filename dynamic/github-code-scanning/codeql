@@ -1,0 +1,53 @@
+name: "CodeQL"
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  analyze:
+    name: Analyze (CodeQL)
+    runs-on: macos-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v2
+      with:
+        languages: swift
+        # Optional: set source-root if your Swift sources are in a subfolder
+        # source-root: src
+
+    - name: Set up Xcode (macOS runners have Xcode preinstalled; this step outputs the selected Xcode)
+      run: |
+        echo "Using Xcode version:" && xcodebuild -version || true
+
+    - name: Build Swift project (attempt SwiftPM, fallback to xcodebuild)
+      run: |
+        set -euo pipefail
+        echo "Detecting build system..."
+        if [ -f Package.swift ]; then
+          echo "Detected Swift Package Manager (Package.swift). Running 'swift build'..."
+          swift build
+        elif ls *.xcworkspace 1> /dev/null 2>&1; then
+          WORKSPACE=$(ls *.xcworkspace | head -n1)
+          echo "Detected Xcode workspace: $WORKSPACE"
+          xcodebuild -workspace "$WORKSPACE" -scheme "$(ls $(dirname "$WORKSPACE") | grep -E '\.xcodeproj|\.xcworkspace' || true)" -sdk iphonesimulator -configuration Debug build || true
+        elif ls *.xcodeproj 1> /dev/null 2>&1; then
+          PROJECT=$(ls *.xcodeproj | head -n1)
+          echo "Detected Xcode project: $PROJECT"
+          xcodebuild -project "$PROJECT" -scheme "$(ls $(basename "$PROJECT" .xcodeproj) | head -n1)" -sdk iphonesimulator -configuration Debug build || true
+        else
+          echo "No Package.swift, .xcworkspace, or .xcodeproj found. Skipping build."
+        fi
+
+    - name: Perform CodeQL analysis
+      uses: github/codeql-action/analyze@v2
